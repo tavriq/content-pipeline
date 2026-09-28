@@ -1,0 +1,54 @@
+name: blog-prod
+
+services:
+  review-bot:
+    build:
+      context: .
+      args:
+        BLOG_UID: ${BLOG_UID:-109}
+        BLOG_GID: ${BLOG_GID:-112}
+    restart: unless-stopped
+    init: true
+    env_file:
+      - .env
+    networks:
+      - default
+      - platform-db
+    # DNS Timeweb не разрешает eutils.ncbi.nlm.nih.gov. Публичные резолверы
+    # заданы только этому контейнеру и не меняют Docker daemon/соседние проекты.
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    environment:
+      HOME: /tmp/blog-home
+      XDG_CACHE_HOME: /var/lib/blog-cache
+      HF_HOME: /var/lib/blog-cache/huggingface
+      GIT_SSH_COMMAND: ssh -i /run/blog-ssh/id_ed25519 -o IdentitiesOnly=yes -o UserKnownHostsFile=/run/blog-ssh/known_hosts
+    volumes:
+      - .:/app
+      - ${BLOG_CACHE_PATH:-/var/lib/blog-cache}:/var/lib/blog-cache
+      - ${BLOG_SSH_PATH:-/etc/blog/ssh}:/run/blog-ssh:ro
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=256m,uid=${BLOG_UID:-109},gid=${BLOG_GID:-112}
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 512
+    mem_limit: 3g
+    cpus: 1.5
+    stop_grace_period: 90s
+    healthcheck:
+      # --strict: контейнер не считается здоровым при недоступной базе
+      # или пустых ключах AI. Без этого поломка вскрывалась в 08:00,
+      # когда конвейер шёл за темами.
+      test: ["CMD", "python", "scripts/review_bot.py", "--check", "--strict"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 30s
+
+networks:
+  platform-db:
+    external: true

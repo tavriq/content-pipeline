@@ -1,0 +1,30 @@
+[Unit]
+Description=Фактчек-бот блога по эндокринологии
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=blog
+WorkingDirectory=/opt/blog
+ExecStart=/opt/blog/.venv/bin/python scripts/review_bot.py
+Restart=always
+RestartSec=10
+
+# Кэш моделей вне рабочего дерева: home пользователя совпадает с корнем
+# репозитория, и полтора гигабайта весов whisper попадали под git add -A.
+Environment=XDG_CACHE_HOME=/var/lib/blog-cache
+Environment=HF_HOME=/var/lib/blog-cache/huggingface
+
+# Токен читается скриптом из /opt/blog/.env, права на файл — 600.
+# Бот пишет в репозиторий и коммитит, поэтому доступ на запись нужен.
+ReadWritePaths=/opt/blog /var/lib/blog-cache
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

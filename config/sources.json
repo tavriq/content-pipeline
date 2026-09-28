@@ -1,0 +1,8 @@
+{
+  "pubmed": {
+    "enabled": true,
+    "days": 7,
+    "limit": 50,
+    "query": "(endocrine*[Title/Abstract] OR thyroid[Title/Abstract] OR diabetes[Title/Abstract] OR insulin[Title/Abstract] OR PCOS[Title/Abstract] OR obesity[Title/Abstract] OR metabolism[Title/Abstract]) AND (Guideline[Publication Type] OR Meta-Analysis[Publication Type] OR Systematic Review[Publication Type] OR Randomized Controlled Trial[Publication Type]) NOT Preprint[Publication Type]"
+  }
+}

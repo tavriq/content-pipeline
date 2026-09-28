@@ -1,0 +1,14 @@
+.git
+.env
+.venv
+__pycache__
+*.pyc
+*.log
+.DS_Store
+.cache
+logs
+data/bot-state.json
+core/voice/*
+!core/voice/.gitkeep
+reels/assets/*
+!reels/assets/.gitkeep

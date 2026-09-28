@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    # Миграции и SQL раньше не проверялись ничем: база в CI отсутствовала,
+    # а ошибку в схеме ловил уже сервер.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: blog_content
+          POSTGRES_PASSWORD: ci-only
+          POSTGRES_DB: blog_content
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U blog_content"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://blog_content:ci-only@localhost:5432/blog_content
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: python3 -m pip install --requirement requirements.txt
+
+      - name: Compile Python
+        run: python3 -m compileall -q scripts tg tests
+
+      - name: Run unit tests
+        run: python3 -m unittest discover -s tests -t tests -v
+
+      - name: Run linter self-test
+        run: python3 scripts/selftest.py
+
+      - name: Lint materials
+        run: python3 scripts/lint.py tg reels core/transcripts
+
+      - name: Apply migrations on a real database
+        run: |
+          python3 scripts/database.py check
+          python3 scripts/database.py migrate
+          # Повторный прогон обязан быть пустым: миграции идемпотентны.
+          python3 scripts/database.py migrate | grep -q "Новых миграций нет"
+
+      - name: Import the topic registry on a real database
+        run: |
+          # Импорт ходит в базу и потому не покрывается модульными тестами.
+          # Здесь ловятся ошибки склейки: неверная сигнатура connect,
+          # разъехавшийся SQL, статус, которого нет в CHECK-ограничении.
+          python3 scripts/topic_registry.py import | grep -q "тем доступно"
+          # Повторный импорт обязан пройти без дублей: у реестра есть
+          # уникальный индекс, и ON CONFLICT должен на него попадать.
+          python3 scripts/topic_registry.py import | grep -q "тем доступно"
+
+      - name: Validate Compose
+        run: |
+          cp .env.example .env
+          docker compose config --quiet
+
+      - name: Build container
+        run: docker compose build
+
+      - name: Smoke-test container
+        run: |
+          docker run --rm \
+            --env TELEGRAM_BOT_TOKEN=ci-smoke-only \
+            --env AUTHOR_CHAT_ID=1 \
+            blog-prod-review-bot:latest \
+            python scripts/review_bot.py --check
